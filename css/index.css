@@ -1,0 +1,22 @@
+*{
+    margin: 0;
+    padding: 0;
+}
+
+.navbar-expand-lg .navbar-collapse {
+    display: flex;
+    justify-content: flex-end;
+    font-size: 20px;
+}
+.row{
+    justify-content:space-around;
+}
+.container-fluid.nik{
+    background-color:#D8D8D8 ;
+}
+.container-fluid.hil{
+    background-color:#D8D8D8 ;
+}
+.text-reset{
+    text-decoration: none;
+}

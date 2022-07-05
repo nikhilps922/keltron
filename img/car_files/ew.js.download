@@ -1,0 +1,63 @@
+
+function ew_getTitle() {
+    return document.title;
+}
+
+function ew_getUri() {
+    return document.documentURI;
+}
+
+function ew_getReferrer() {
+    return document.referrer;
+}
+
+function ew_getParams() {
+    return location.search;
+}
+
+function postAjax(url, data, success) {
+    var params = Object.keys(data).map(
+        function(k){ return encodeURIComponent(k) + '=' + encodeURIComponent(data[k]) }
+    ).join('&');
+
+    var xhr = window.XMLHttpRequest ? new XMLHttpRequest() : new ActiveXObject("Microsoft.XMLHTTP");
+    xhr.open('POST', url);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState>3 && xhr.status==200) { success(xhr.responseText); }
+    };
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.send(params);
+    return xhr;
+}
+
+if (_extraWatchParams.projectId) {
+
+    if (document.referrer && document.referrer.startsWith('https://app.extrawatch.com')) {
+        console.log('ignoring referrer: ' + document.referrer);
+    }  else {
+        console.log("Opening project: " + _extraWatchParams.projectId);
+        postAjax("https://agent.extrawatch.com/agent-gateway/agent/api/visit?" + new Date().getTime(),
+            {
+                projectId: _extraWatchParams.projectId,
+                title: ew_getTitle(),
+                path: ew_getUri(),
+                referrer: ew_getReferrer(),
+                params: ew_getParams()
+            },
+            function (data) {
+            }
+        );
+    }
+
+    (function() {
+        var ewHeatmapHead = document.getElementsByTagName('head')[0];
+        var ewHeatmapScript = document.createElement('script');
+        ewHeatmapScript.type = 'text/javascript';
+        ewHeatmapScript.src = 'https://agent.extrawatch.com/agent/js/ew-heatmap.js'
+        ewHeatmapHead.appendChild(ewHeatmapScript);
+    })();
+
+} else {
+    console.log("ExtraWatch projectId not specified!");
+}

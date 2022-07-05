@@ -1,0 +1,381 @@
+
+
+var ew_Helper = {   /* helper functions which can be used anywhere*/
+    endsWith: function (str, suffix) {
+        if (str == null || suffix == null) {
+            return false;
+        }
+        return str.indexOf(suffix, str.length - suffix.length) !== -1;
+    },
+    startsWith : function(str, prefix) {
+        if (str == null || prefix == null) {
+            return false;
+        }
+        return str.indexOf(prefix) === 0;
+    }
+}
+
+
+
+var ew_Heatmap = {
+
+    extraWatch_click : function(evt) {
+
+        var positionFromEvent = ew_Heatmap.getPositionFromEvent(evt);
+        var xpath = ew_Heatmap.createXPathFromElement(evt.target);
+
+        var scrollx = window.pageXOffset == undefined ? clickDoc.scrollLeft : window.pageXOffset;
+        var scrolly = window.pageYOffset == undefined ? clickDoc.scrollTop : window.pageYOffset;
+
+        var offsetX = positionFromEvent[0];
+        var offsetY = positionFromEvent[1];
+
+        var projectId = _extraWatchParams.projectId;
+
+        var uri = document.documentURI;
+	var title = document.title;
+
+        if(ew_Heatmap.checkIfDoSynchronousClick(evt))	  {
+            ew_Heatmap.sendPost(projectId, title, uri,
+                xpath,
+                offsetX,
+                offsetY,
+                screenWidth,
+                screenHeight);	//download it synchronously
+        } else {
+            setTimeout(function() {
+                ew_Heatmap.sendPost(projectId, title, uri,
+                    xpath,
+                    offsetX,
+                    offsetY,
+                    screenWidth,
+                    screenHeight,
+                    true);
+            }, 100);	//we had to add some delay so that this call is last one. If it was called first, it was causing some problems with some shopping cart ajax calls
+        }
+
+
+    },
+    sendPost : function(
+        projectId,
+	title,
+        uri,
+        xpath,
+        offsetX,
+        offsetY,
+        screenWidth,
+        screenHeight,
+        async
+    ) {
+        var xhr = new XMLHttpRequest();
+        var url = "https://app.extrawatch.com/heatmap/api/write";
+
+        if (!async) {
+            async = true;
+        }
+
+        xhr.open("POST", url, async);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState === 4 && xhr.status === 200) {
+                console.log(this.responseText);
+
+            }
+        };
+
+        // Converting JSON data to string
+        var data = JSON.stringify({
+                "projectId": projectId,
+		"title": title,
+                "uri": uri,
+                "xpath": xpath,
+                "offsetX": offsetX,
+                "offsetY": offsetY,
+                "screenWidth": screenWidth,
+                "screenHeight": screenHeight
+            }
+        );
+
+        // Sending data with the request
+        xhr.send(data);
+    },
+
+
+    /**
+     source and thanks to: http://nickthecoder.wordpress.com/2013/02/26/offsetx-and-offsety-in-firefox/
+     */
+    ew_getOffset: function (evt) {
+        if (evt.offsetX != undefined)
+            return {x: evt.offsetX, y: evt.offsetY};
+
+        var el = evt.target;
+        var offset = {x: 0, y: 0};
+
+        while (el.offsetParent) {
+            offset.x += el.offsetLeft;
+            offset.y += el.offsetTop;
+            el = el.offsetParent;
+        }
+
+        offset.x = evt.pageX - offset.x;
+        offset.y = evt.pageY - offset.y;
+
+        return offset;
+    },
+
+    /* attach click event listener on onclick event */
+    attachExtraWatchClickListener: function (frontendTokenToPass, uri2titleId) {
+        if(false) {	//bugfix: binding via jquery was taking too long, using rather native js addEventListener //registering click listener via jQuery if it's loaded
+            jQuery(document).bind("click", function (event) {
+                ew_Heatmap.extraWatch_click(event);
+            });
+        } else {
+            window.document.onclick = function (evt) {
+                if (window.addEventListener) {
+                    window.addEventListener("onclick", ew_Heatmap.extraWatch_click(evt), false);
+                } else if (window.attachEvent) {
+                    window.attachEvent("onclick", ew_Heatmap.extraWatch_click(evt));
+                } else {
+                    window.addEventListener("onclick", ew_Heatmap.extraWatch_click(evt), false);
+                }
+            }
+        }
+    },
+
+    extraWatch_decorateLinksWithCustomHandler: function (extraWatchLinkElementsList) {
+        for (i = 0; i < extraWatchLinkElementsList.length; i++) {
+            try {
+                if (extraWatchLinkElementsList[i].onclick != null) {    /* go through all onclick methods */
+                    var replaceOnClick= ["javascript:",""];
+                    window.ewTemp_frontendTokenToPass = frontendTokenToPass;
+                    window.ewTemp_uri2titleId = uri2titleId;
+                    replaceOnClick.forEach(function(entry) {    /* for each search pattern */
+                        var searchMask = entry + "(.*)";
+                        var regEx = new RegExp(searchMask, "i");
+                        if (extraWatchLinkElementsList[i].outerHTML.match(regEx) != null) {  /* if outer HTML matches pattern */
+                            var replaceMask = entry + "ew_Heatmap.extraWatch_click\(event, window.ewTemp_frontendTokenToPass, window.ewTemp_uri2titleId\);$1;";  /* inserting click method before original onclick method content */
+                            var originalOnClick = extraWatchLinkElementsList[i].getAttribute('onclick');
+                            var decoratedOnClick = originalOnClick.replace(regEx, replaceMask);
+                            extraWatchLinkElementsList[i].setAttribute('onclick', decoratedOnClick);
+                            return true;
+                        }
+                    });
+                }
+            } catch (e) {
+            }
+        }
+    },
+
+    findPos: function (obj) {
+        var curtop = 0;
+        if (obj.offsetParent) {
+            do {
+                curtop += obj.offsetTop;
+            } while (obj = obj.offsetParent);
+            return [curtop];
+        }
+    },
+
+    createXPathFromElement: function (elm) {
+        var allNodes = document.getElementsByTagName('*');
+        for (segs = []; elm && elm.nodeType == 1; elm = elm.parentNode) {
+            if (elm.hasAttribute('id')) {
+                var uniqueIdCount = 0;
+                for (var n = 0; n < allNodes.length; n++) {
+                    if (allNodes[n].hasAttribute('id') && allNodes[n].id == elm.id) uniqueIdCount++;
+                    if (uniqueIdCount > 1) break;
+                }
+                ;
+                if (uniqueIdCount == 1) {
+                    //segs.unshift('id("' + elm.getAttribute('id') + '")');
+                    segs.unshift('//*[@id="' + elm.getAttribute('id') + '"]');
+                    return segs.join('/');
+                } else {
+                    segs.unshift(elm.localName.toLowerCase() + '[@id="' + elm.getAttribute('id') + '"]');
+                }
+            } else if (elm.hasAttribute('class')) {
+                segs.unshift(elm.localName.toLowerCase() + '[@class="' + elm.getAttribute('class') + '"]');
+            } else {
+                for (i = 1, sib = elm.previousSibling; sib; sib = sib.previousSibling) {
+                    if (sib.localName == elm.localName)  i++;
+                }
+                ;
+                segs.unshift(elm.localName.toLowerCase() + '[' + i + ']');
+            }
+            ;
+        }
+        ;
+        return segs.length ? '/' + segs.join('/') : null;
+    },
+
+    isTargetElementNavigatingAway: function (target) {
+
+        switch (target.localName) {
+            case "a": {
+                /* if there's A element and contains # or javascript: in href="..." we are assuming that we are not navigating away */
+                if (target.href == "" || ew_Helper.endsWith(target.href,"#") || ew_Helper.startsWith(target.href, 'javascript:')) {
+                    return false;
+                }
+                return true;
+                break;
+            }
+            case "input": {
+                switch (target.type) {
+
+                    case "button": {
+                        return false;	//we assume that all buttons are not navigating away, most of them are on site
+                    }
+
+                    default : {
+                        if (target.type == "submit") {
+                            return true;
+                        } else {
+                            return false;
+                        }
+                        break;
+                    }
+                }
+
+            }
+            case "submit": {
+                /* in case of submit and form buttons we'll assume this is navigating away */
+                return true;
+            }
+            default: {
+                return false;
+            }
+        }
+
+
+    },
+    checkIfElementContainsHrefWithHttp: function (targetElement, domain) {
+        while(targetElement != null) {  /* go through all parent elements */
+            if (targetElement.href != null && ew_Helper.startsWith(targetElement.href,"http") || ew_Helper.startsWith(targetElement.href,"https") /* && !(targetElement.href.indexOf(domain) > 0) */) {
+                return true;
+            }
+            targetElement = targetElement.parentElement;
+        };
+        return false;
+    },
+    checkIfElementContainsHash: function (targetElement, domain) {
+        while(targetElement != null) {  /* go through all parent elements */
+            if (targetElement.href != null && targetElement.href.indexOf("#") != -1) {
+                return true;
+            }
+            targetElement = targetElement.parentElement;
+        };
+        return false;
+    },
+    checkIfDoSynchronousClick: function (evt) {
+        var currentDomain = null;
+        if (window.location && window.location.href && window.location.href.split('/') && (window.location.href.split('/').length > 0)) {
+            currentDomain = window.location.href.split('/')[2];
+        }
+        if (evt.target != null && evt.target.type != null && evt.target.type == "submit") {	/* shopping cart submit buttons etc. */
+            return true;
+        }
+        if (evt.target != null && ew_Heatmap.checkIfElementContainsHash(evt.target, currentDomain)) {	//only for links which have http://
+            return false;
+        }
+
+        if (evt.target != null && ew_Heatmap.checkIfElementContainsHrefWithHttp(evt.target, currentDomain)) {	//only for links which have http://
+            return true;
+        }
+
+        return false;    /* do synchronous click if navigating away */
+    },
+    getPositionFromEvent : function (evt) {
+        var pos = this.mousePosition(evt); //relative position to element
+        if (evt.offsetX == null || evt.offsetY == null) {
+            var calculatedOffset = ew_Heatmap.ew_getOffset(evt);
+            var x = calculatedOffset.x;
+            var y = calculatedOffset.y;
+        } else {
+            var x = evt.offsetX; // offset relative within the element
+            var y = evt.offsetY;
+        }
+        return [x,y];
+    },
+    mousePosition:function (ev) {
+        // this doesn't work right
+        // rather use
+        /*
+         // this = element to observe
+         var x = ev.pageX - this.offsetLeft;
+         var y = ev.pageY - this.offsetTop;
+
+         */
+        var x, y;
+
+        try {
+            if (ev.layerX) { // Firefox
+                x = ev.layerX;
+                y = ev.layerY;
+            } else if (ev.offsetX) { // Opera
+                x = ev.offsetX;
+                y = ev.offsetY;
+            }
+            if (typeof(x) == 'undefined')
+                return;
+        } catch (e) {
+            // suppress
+            return;
+        }
+
+        return [x, y];
+    }
+
+
+
+
+}
+
+
+var urlBase = "";
+var clickDoc = (document.documentElement != undefined && document.documentElement.clientHeight != 0) ? document.documentElement : document.body;
+var screenWidth = screen.width;
+var screenHeight = screen.height;
+var extraWatchLinkElementsList;
+
+ew_Heatmap.attachExtraWatchClickListener('a291769a27890da2dbf8b3976d2dbc727b4426f5', 1);
+
+
+window.addEventListener('load',function(){
+    extraWatchLinkElementsList = document.getElementsByTagName("A");
+
+    ew_Heatmap.extraWatch_decorateLinksWithCustomHandler(extraWatchLinkElementsList, 'a291769a27890da2dbf8b3976d2dbc727b4426f5', 1);
+    ew_Heatmap.extraWatch_decorateLinksWithCustomHandler(document.getElementsByTagName("BUTTON"), 'a291769a27890da2dbf8b3976d2dbc727b4426f5', 1);
+});
+
+
+
+
+window.addEventListener('message', event => {
+    if (
+        (event.origin.startsWith('https://app.extrawatch.com'))
+        && event.data && event.data.type === 'displayHeatmap'
+    ) {
+
+    // The data was sent from your site.
+    // Data sent with postMessage is stored in event.data:
+    console.log(event.origin);
+    console.log(event.data);
+
+    (function() {
+        var ewDisplayHeatmapHead = document.getElementsByTagName('head')[0];
+        var ewDisplayHeatmapScript = document.createElement('script');
+        ewDisplayHeatmapScript.type = 'text/javascript';
+        ewDisplayHeatmapScript.src = 'https://agent.extrawatch.com/agent/js/ew-show-heatmap.js'
+        ewDisplayHeatmapHead.appendChild(ewDisplayHeatmapScript);
+    })();
+
+    setTimeout(function() {
+        console.log('message received: ' + window.h337);
+        var xx = window.h337.create({"element":document.body, "radius":50, "visible":true});
+        xx.displayLoading
+        xx.store.setDataSet(event.data);
+
+    }, 1000);
+
+}
+});
